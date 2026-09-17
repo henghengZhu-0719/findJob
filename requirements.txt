@@ -1,0 +1,12 @@
+# 运行依赖。pip 用户：pip install -r requirements.txt
+# uv 用户直接 uv sync 即可（以 pyproject.toml + uv.lock 为准）
+
+# 采集
+curl-cffi>=0.7          # 模拟 Chrome TLS 指纹，绕过 JA3 反爬
+beautifulsoup4>=4.12    # 详情页解析
+lxml>=5.0               # bs4 的解析器后端
+
+# 存储与 API
+sqlalchemy>=2.0         # ORM（models 层）
+fastapi>=0.115          # Web 框架（routes 层）
+uvicorn>=0.30           # ASGI 服务器

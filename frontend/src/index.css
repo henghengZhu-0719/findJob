@@ -1,0 +1,91 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #f5f6f8; }
+#root { min-height: 100vh; }
+
+/* ============ 公告正文排版 ============
+   原始 HTML 多为 Word/富文本编辑器导出：段落嵌套深、内联样式杂乱。
+   sanitize.js 已剥掉字体族与异常字号，这里统一版式。 */
+.detail-body {
+  font-size: 15px;
+  line-height: 1.9;
+  color: #262626;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei',
+    'Segoe UI', Roboto, sans-serif;
+  word-break: break-word;
+}
+
+.detail-body p {
+  margin: 0 0 14px;
+  /* 原文常用 text-indent 做首行缩进，保留但兜底给个默认 */
+  text-align: justify;
+}
+
+/* 居中且加粗的段落基本都是标题行，给它更像标题的呼吸感 */
+.detail-body p[align='center'] {
+  text-align: center;
+  margin: 8px 0 20px;
+  line-height: 1.5;
+}
+.detail-body p[align='center'] strong { font-weight: 600; }
+
+.detail-body h1, .detail-body h2, .detail-body h3,
+.detail-body h4, .detail-body h5, .detail-body h6 {
+  margin: 28px 0 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #141414;
+}
+.detail-body h1 { font-size: 1.4em; }
+.detail-body h2 { font-size: 1.25em; }
+.detail-body h3 { font-size: 1.1em; }
+
+.detail-body strong, .detail-body b { font-weight: 600; color: #141414; }
+
+.detail-body ul, .detail-body ol { margin: 0 0 14px; padding-left: 24px; }
+.detail-body li { margin-bottom: 6px; }
+/* 列表项里常被塞一个 <p>，去掉它自带的下边距免得行距翻倍 */
+.detail-body li > p { margin: 0; }
+
+.detail-body a { color: #1677ff; text-decoration: none; }
+.detail-body a:hover { text-decoration: underline; }
+
+.detail-body img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 16px auto;
+  border-radius: 4px;
+}
+
+/* 表格：原文宽度经常超出容器，包一层横向滚动 */
+.detail-body table {
+  width: 100% !important;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+}
+.detail-body table td, .detail-body table th {
+  border: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+.detail-body table th,
+.detail-body table tr:first-child td { background: #fafafa; font-weight: 600; }
+.detail-body table p { margin: 0; }
+
+.detail-body blockquote {
+  margin: 16px 0;
+  padding: 8px 16px;
+  border-left: 3px solid #d9d9d9;
+  background: #fafafa;
+  color: #595959;
+}
+
+.detail-body hr { border: none; border-top: 1px solid #f0f0f0; margin: 24px 0; }
+
+/* 空段落（Word 导出里满地都是）压扁，避免大片空白 */
+.detail-body p:empty { margin: 0; height: 0; }
+
+.detail-body .table-scroll { overflow-x: auto; margin: 16px 0; }
+.detail-body .table-scroll table { margin: 0; }

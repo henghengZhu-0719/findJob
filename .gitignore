@@ -1,0 +1,35 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ===== 采集数据 =====
+# SQLite 库、导出的 CSV/JSONL 都是可重新抓取的产物，不入库
+data/
+
+# ===== 前端 =====
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# 前端构建产物，由 `cd frontend && npm run build` 生成
+static/
+
+# ===== 编辑器 / 系统 =====
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# ===== 运行时 =====
+*.log
+.env
+.env.local

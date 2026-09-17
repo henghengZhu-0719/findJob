@@ -1,0 +1,139 @@
+# jobspider — 招聘公告采集框架
+
+`BaseSpider` 基类 + 站点插件式爬虫。每个站点一个模块，注册后由统一 CLI 调度；
+数据归一化为 `JobPost` 存 SQLite（按指纹增量去重），可导出 CSV / JSONL。
+
+## 结构
+
+```
+jobspider/
+├── settings.py          # 框架级配置（路径、超时、限速、指纹）
+├── cli.py               # 命令行入口
+├── core/
+│   ├── models.py        # JobPost 数据模型（Item）
+│   ├── http.py          # curl_cffi 会话：Chrome TLS 指纹、直连
+│   ├── base.py          # BaseSpider：限速/重试/增量停止/入库/统计
+│   ├── pipeline.py      # SQLiteStore：去重入库、导出、正文回填
+│   └── registry.py      # @register 爬虫注册表
+└── spiders/
+    └── ncrczpw.py       # 南昌人才招聘网
+```
+
+## 使用
+
+注释写在命令上一行 —— zsh 交互模式默认不认行尾的 `#`，跟在命令后面会被当成参数。
+
+### 启动服务（API + 前端）
+
+```bash
+uv sync
+uv run python -m uvicorn main:app --reload
+```
+
+- 页面：http://127.0.0.1:8000
+- 接口文档：http://127.0.0.1:8000/docs
+
+### 采集
+
+```bash
+# 列出可用爬虫
+uv run python -m jobspider list
+
+# 增量抓取：碰到整页旧数据自动停（日常用这个）
+uv run python -m jobspider crawl ncrczpw
+
+# 只抓 2 页，含详情正文
+uv run python -m jobspider crawl ncrczpw --pages 2
+
+# 全量、只抓列表不抓正文
+uv run python -m jobspider crawl ncrczpw --full --no-detail
+
+# 补抓 content 为空的记录
+uv run python -m jobspider backfill
+
+# 入库统计
+uv run python -m jobspider stats
+
+# 导出 data/all.csv
+uv run python -m jobspider export --fmt csv
+
+# 导出指定站点为 jsonl
+uv run python -m jobspider export --site ncrczpw --fmt jsonl -o data/nc.jsonl
+```
+
+数据落在 `data/jobs.db`（SQLite，表 `jobs`，`fingerprint` = sha1(site:source_id) 唯一去重）。
+
+### 前端开发
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+开发服务器在 5173 端口，`/api` 自动代理到 8000。改完构建：
+
+```bash
+npm run build
+```
+
+产物输出到 `../static/`，由 FastAPI 直接托管。
+
+## 架构
+
+五层（FastAPI 惯例），爬虫的存储管道复用 service 层：
+
+```
+db/database.py     engine / SessionLocal / Base / get_db
+models/job.py      ORM 模型
+repos/job_repo.py  数据访问，只做 CRUD，不提交事务
+services/          业务逻辑 + 事务边界；同时是爬虫的 store
+schemas/job.py     Pydantic 出入参
+routes/job_route.py 路由
+main.py            应用入口，兼托管前端
+```
+
+Session 的开法分两种场景：API 请求由 `get_db()` 按请求开关、注入给 service；爬虫和 CLI 没有请求生命周期，由 service 自持一个长会话。
+
+## 新增一个站点
+
+在 `jobspider/spiders/` 下建模块，三步：
+
+```python
+from ..core import BaseSpider, JobPost, register
+
+@register
+class XxxSpider(BaseSpider):
+    name = "xxx"                 # CLI 用的唯一名
+    site_name = "某某人才网"
+    base_url = "https://..."
+    delay = 1.0                  # 站点级限速
+
+    def crawl(self):             # 必须实现：翻页并逐条 yield JobPost
+        page = 1
+        while True:
+            rows = self.get_json(...)["data"]["list"]
+            if not rows:
+                break
+            for r in rows:
+                yield JobPost(site=self.name, source_id=str(r["id"]),
+                              title=r["title"], url=r["url"],
+                              publish_date=r["date"], extra=r)
+            if self.should_stop() or (self.max_pages and page >= self.max_pages):
+                break
+            page += 1
+
+    def fetch_detail(self, item):  # 可选：填充 item.content / content_html
+        ...
+```
+
+保存即生效（registry 自动发现），`uv run python -m jobspider crawl xxx` 即可跑。
+
+## 已踩过的坑（ncrczpw）
+
+- 列表接口 `data.total` 恒等于 `count*100`，不可信；翻页终止以 `list` 为空为准。
+- `kaoshi` 与 `notice` 两板块 id 独立自增会撞号，source_id 带板块前缀。
+- 站点有 TLS 指纹反爬：普通 requests/curl 会被 200 兜底回首页，须用 curl_cffi
+  模拟 Chrome 指纹；高频访问后仍可能被临时软封（任意 URL 都返回首页），
+  `fetch_detail` 里用页面 `<title>` 校验识别，等冷却后 `backfill` 补正文。
+- 本机 `https_proxy` 环境变量指向的代理不可用，`http.py` 会在进程内清掉直连。
