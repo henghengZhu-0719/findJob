@@ -102,7 +102,7 @@ class CrawlScheduler:
                 store = JobService()
                 try:
                     s = cls(store).run()
-                    result[name] = {"new": s.new, "dup": s.dup,
+                    result[name] = {"new": s.new, "dup": s.dup, "old": s.old,
                                     "detail_fail": s.detail_fail, "errors": s.errors[-5:]}
                 except Exception as e:  # 单站点崩溃不影响其他站点和调度线程
                     log.exception("采集 %s 异常", name)

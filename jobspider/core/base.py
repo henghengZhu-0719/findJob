@@ -14,6 +14,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from typing import Iterator, Optional
 
 from .. import settings
@@ -26,6 +27,7 @@ from .models import JobPost
 class CrawlStats:
     new: int = 0
     dup: int = 0
+    old: int = 0          # 早于 since 被跳过的
     detail_ok: int = 0
     detail_fail: int = 0
     errors: list = field(default_factory=list)
@@ -50,12 +52,14 @@ class BaseSpider(ABC):
                  max_pages: Optional[int] = None,
                  incremental: bool = True,
                  with_detail: bool = True,
-                 stop_after_seen: int = 20):
+                 stop_after_seen: int = 20,
+                 max_age_days: Optional[int] = settings.MAX_AGE_DAYS):
         """
         max_pages       : 最多翻多少页（None = 不限，直到列表为空）
         incremental     : True 时连续遇到 stop_after_seen 条已入库数据就提前停
         with_detail     : 是否抓详情正文
         stop_after_seen : 增量模式的“连续已见”阈值，通常设为一页的条数
+        max_age_days    : 只采最近 N 天发布的（0/None = 不限）；与增量模式无关，--full 也受它约束
         """
         if store is None:
             from services.job_service import JobService  # 延迟 import 防循环依赖
@@ -65,6 +69,9 @@ class BaseSpider(ABC):
         self.incremental = incremental
         self.with_detail = with_detail
         self.stop_after_seen = stop_after_seen
+        # YYYY-MM-DD，与 publish_date 直接按字符串比较；空串 = 不限
+        self.since = ((date.today() - timedelta(days=max_age_days)).isoformat()
+                      if max_age_days else "")
         self.session = build_session(self.default_headers)
         self.log = logging.getLogger(self.name or self.__class__.__name__)
         self.stats = CrawlStats()
@@ -74,15 +81,16 @@ class BaseSpider(ABC):
     # ================= 子类接口 =================
     @abstractmethod
     def crawl(self) -> Iterator[JobPost]:
-        """逐条产出列表页解析出的 JobPost。翻页循环里应检查 self.should_stop()。"""
+        """逐条产出列表页解析出的 JobPost。每页末尾应检查 self.should_stop(本页 items)。"""
 
     def fetch_detail(self, item: JobPost) -> None:
         """抓取并填充 item.content / item.content_html。默认不抓，子类按需实现。"""
 
     # ================= 框架逻辑 =================
     def run(self) -> CrawlStats:
-        self.log.info("开始采集 %s (%s)  incremental=%s max_pages=%s",
-                      self.site_name, self.name, self.incremental, self.max_pages)
+        self.log.info("开始采集 %s (%s)  incremental=%s max_pages=%s since=%s",
+                      self.site_name, self.name, self.incremental, self.max_pages,
+                      self.since or "不限")
         try:
             # 停止时机由 crawl() 的翻页循环通过 should_stop() 自行决定，
             # 这样多分组（如多分类/多城市）的爬虫可以分组重置计数
@@ -95,11 +103,20 @@ class BaseSpider(ABC):
             self.stats.errors.append(str(e))
             self.log.error("多次冷却后仍被限流，停止采集：%s", e)
         s = self.stats
-        self.log.info("完成：新增 %d，已存在 %d，详情成功 %d，详情失败 %d",
-                      s.new, s.dup, s.detail_ok, s.detail_fail)
+        self.log.info("完成：新增 %d，已存在 %d，过旧跳过 %d，详情成功 %d，详情失败 %d",
+                      s.new, s.dup, s.old, s.detail_ok, s.detail_fail)
         return s
 
+    def is_too_old(self, item: JobPost) -> bool:
+        """发布日期早于 since。日期缺失的不算旧（宁可多采）。"""
+        return bool(self.since and item.publish_date
+                    and item.publish_date[:10] < self.since)
+
     def _process(self, item: JobPost) -> None:
+        if self.is_too_old(item):
+            # 不抓详情、不入库、不计入连续已见
+            self.stats.old += 1
+            return
         is_known = self.store.has(item.fingerprint)
         if is_known:
             self._seen_streak += 1
@@ -120,8 +137,17 @@ class BaseSpider(ABC):
         else:
             self.stats.dup += 1
 
-    def should_stop(self) -> bool:
+    def should_stop(self, page: Optional[list] = None) -> bool:
+        """翻页循环每页末尾调用。传入本页 JobPost 列表时，整页都早于 since 也停。
+
+        只看整页而不是碰到第一条旧的就停：列表并非严格按日期排序
+        （如 ncrczpw 专题专栏更新后发布日期会被刷新、顶到前面）。
+        """
         if self.incremental and self._seen_streak >= self.stop_after_seen:
+            self.log.info("连续 %d 条已入库，增量结束", self.stop_after_seen)
+            return True
+        if page and all(self.is_too_old(it) for it in page):
+            self.log.info("整页均早于 %s，结束", self.since)
             return True
         return False
 

@@ -25,7 +25,55 @@ def store(tmp_path):
 
 def make_spider(store, **kw):
     kw.setdefault("with_detail", False)
+    kw.setdefault("max_age_days", 0)   # 默认不按日期截断，避免用例随真实日期失效
     return NcrczpwSpider(store, **kw)
+
+
+def fake_feed(pages):
+    """pages: 每页一个 [(id, addtime), ...]，超出页数返回空列表。记录请求过的页码。"""
+    calls = []
+
+    def get_json(url, params=None, **kw):
+        calls.append(params["page"])
+        rows = pages[params["page"] - 1] if params["page"] <= len(pages) else []
+        return {"data": {"list": [
+            {**SAMPLE_ROW, "id": i, "addtime": d,
+             "url": f"https://www.ncrczpw.com/kaoshi/{i}.html"} for i, d in rows]}}
+    return get_json, calls
+
+
+def test_since_skips_old_and_stops_on_all_old_page(store, monkeypatch):
+    sp = make_spider(store)
+    sp.since = "2026-09-01"
+    get_json, calls = fake_feed([
+        [(1, "2026-09-10"), (2, "2026-08-31")],     # 混合页：新的入库，旧的跳过，继续翻
+        [(3, "2026-08-20"), (4, "2026-08-19")],     # 整页过旧：停
+        [(5, "2026-08-01")],                        # 不应被请求
+    ])
+    monkeypatch.setattr(sp, "get_json", get_json)
+    stats = sp.run()
+    assert calls == [1, 2]
+    assert (stats.new, stats.old) == (1, 3)
+    assert [r["source_id"] for r in store.rows()] == ["kaoshi:1"]
+
+
+@pytest.mark.parametrize("since, expected_pages", [
+    ("", [1, 2, 3, 4, 5, 6]),        # 无下限：一路翻到列表为空（即站点全部历史）
+    ("2026-08-15", [1, 2, 3]),       # 第 3 页（08-01）起整页过旧即停
+])
+def test_sparse_known_rows_need_date_floor(store, monkeypatch, since, expected_pages):
+    """复现：库里已有数据零散分布、凑不满连续阈值时，增量停止永不触发，靠日期下限兜底。"""
+    pages = [[(p * 10 + i, f"2026-{10 - p:02d}-01") for i in range(4)] for p in range(5)]
+    for p in range(5):   # 每页只有第 1 条已入库，连续已见最多 1 条
+        store.save(make_spider(store).parse_item(
+            {**SAMPLE_ROW, "id": p * 10, "url": f"https://www.ncrczpw.com/kaoshi/{p * 10}.html"}))
+
+    sp = make_spider(store, stop_after_seen=3)
+    sp.since = since
+    get_json, calls = fake_feed(pages)
+    monkeypatch.setattr(sp, "get_json", get_json)
+    sp.run()
+    assert calls == expected_pages
 
 
 def test_parse_item(store):

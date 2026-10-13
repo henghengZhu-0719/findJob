@@ -78,10 +78,9 @@ class NcrczpwSpider(BaseSpider):
             self.log.info("第 %d 页：%d 条", page, len(rows))
             if not rows:
                 break
-            for r in rows:
-                yield self.parse_item(r)
-            if self.should_stop():
-                self.log.info("连续 %d 条已入库，增量结束", self.stop_after_seen)
+            items = [self.parse_item(r) for r in rows]
+            yield from items
+            if self.should_stop(items):
                 break
             if self.max_pages and page >= self.max_pages:
                 break

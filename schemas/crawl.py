@@ -12,7 +12,7 @@ class CrawlStatus(BaseModel):
     next_at: Optional[str] = None
     last_started: Optional[str] = None
     last_finished: Optional[str] = None
-    last_result: dict = {}            # 爬虫名 -> {new, dup, detail_fail, errors}
+    last_result: dict = {}            # 爬虫名 -> {new, dup, old, detail_fail, errors}
 
 
 class CrawlTriggered(BaseModel):

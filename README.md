@@ -23,12 +23,20 @@ jobspider/
 
 注释写在命令上一行 —— zsh 交互模式默认不认行尾的 `#`，跟在命令后面会被当成参数。
 
-### 启动服务（API + 前端）
+### 启动服务（API + 前端 + 定时采集）
 
 ```bash
-uv sync
-uv run python -m uvicorn main:app --reload
+# 一键启动：同步依赖、前端有改动自动重新构建，然后起服务
+./start.sh
+
+# 开发模式：后端 --reload + 前端 vite 热更新，页面走 http://127.0.0.1:5173
+./start.sh dev
+
+# 换端口
+PORT=9000 ./start.sh
 ```
+
+手动等价于：`uv sync` → `cd frontend && npm install && npm run build` → `uv run python -m uvicorn main:app`。
 
 - 页面：http://127.0.0.1:8000
 - 接口文档：http://127.0.0.1:8000/docs

@@ -28,7 +28,9 @@ def main(argv=None):
     pc.add_argument("name", help="爬虫名（见 list）")
     pc.add_argument("--pages", type=int, default=None, help="最多翻页数")
     pc.add_argument("--full", action="store_true",
-                    help="全量模式：不因连续已见数据提前停止")
+                    help="全量模式：不因连续已见数据提前停止（仍受 --days 约束）")
+    pc.add_argument("--days", type=int, default=None,
+                    help=f"只采最近 N 天发布的，默认 {settings.MAX_AGE_DAYS}，0 = 不限")
     pc.add_argument("--no-detail", action="store_true", help="不抓详情正文")
     pc.add_argument("--type-id", default="", help="站点分类参数（站点自定义）")
 
@@ -56,6 +58,8 @@ def main(argv=None):
                       with_detail=not args.no_detail)
         if args.type_id:
             kwargs["type_id"] = args.type_id
+        if args.days is not None:
+            kwargs["max_age_days"] = args.days
         spider = cls(**kwargs)
         stats = spider.run()
         return 0 if not stats.errors else 1

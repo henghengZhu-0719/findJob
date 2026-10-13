@@ -16,6 +16,11 @@ RETRY_BACKOFF = 2.0           # 网络错误退避基数（秒），按 2^n 递�
 SOFT_BAN_BACKOFF = 60.0
 SOFT_BAN_RETRIES = 3
 
+# 只采最近 N 天发布的公告（按 publish_date），0 = 不限。
+# 增量停止靠“连续 N 条已入库”，首次运行或库里数据稀疏时永远凑不满，
+# 没有这道下限就会一路翻到站点最早的历史。环境变量 JOBSPIDER_MAX_AGE_DAYS 覆盖
+MAX_AGE_DAYS = int(os.environ.get("JOBSPIDER_MAX_AGE_DAYS", "30"))
+
 # curl_cffi 浏览器指纹（TLS/JA3 + 对应 UA），"chrome" = 最新版 Chrome
 IMPERSONATE = "chrome"
 
