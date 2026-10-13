@@ -70,14 +70,17 @@ curl -X POST http://127.0.0.1:8000/api/crawl/run
 # 列出可用爬虫
 uv run python -m jobspider list
 
-# 增量抓取：碰到整页旧数据自动停（日常用这个）
+# 增量抓取（日常用这个）：连续 20 条已入库、或整页早于 30 天前，先到先停
 uv run python -m jobspider crawl ncrczpw
 
 # 只抓 2 页，含详情正文
 uv run python -m jobspider crawl ncrczpw --pages 2
 
-# 全量、只抓列表不抓正文
-uv run python -m jobspider crawl ncrczpw --full --no-detail
+# 回溯 90 天
+uv run python -m jobspider crawl ncrczpw --days 90
+
+# 真·全量：不因已入库停、不限日期，只抓列表不抓正文
+uv run python -m jobspider crawl ncrczpw --full --days 0 --no-detail
 
 # 补抓 content 为空的记录
 uv run python -m jobspider backfill
@@ -146,11 +149,12 @@ class XxxSpider(BaseSpider):
             rows = self.get_json(...)["data"]["list"]
             if not rows:
                 break
-            for r in rows:
-                yield JobPost(site=self.name, source_id=str(r["id"]),
-                              title=r["title"], url=r["url"],
-                              publish_date=r["date"], extra=r)
-            if self.should_stop() or (self.max_pages and page >= self.max_pages):
+            items = [JobPost(site=self.name, source_id=str(r["id"]),
+                             title=r["title"], url=r["url"],
+                             publish_date=r["date"], extra=r) for r in rows]
+            yield from items
+            # 传本页 items：整页早于日期下限也会停（过旧条目基类已自动跳过）
+            if self.should_stop(items) or (self.max_pages and page >= self.max_pages):
                 break
             page += 1
 
@@ -164,6 +168,10 @@ class XxxSpider(BaseSpider):
 
 - 列表接口 `data.total` 恒等于 `count*100`，不可信；翻页终止以 `list` 为空为准。
 - `kaoshi` 与 `notice` 两板块 id 独立自增会撞号，source_id 带板块前缀。
+- 专题专栏（kaoshi）更新后 `addtime` 会被刷新、整条顶到列表前面，所以列表只是大致按日期倒序；
+  日期下限按“整页都过旧”才停，不在碰到第一条旧的时就停。
+- 只靠“连续 N 条已入库”停止不可靠：首次运行、或库里只有零散旧数据（比如之前只抓过 2 页）时永远凑不满，
+  会一路翻到站点最早的历史，故有 `MAX_AGE_DAYS`（默认 30 天）兜底。
 - 站点有 TLS 指纹反爬：普通 requests/curl 会被 200 兜底回首页，须用 curl_cffi
   模拟 Chrome 指纹；高频访问后仍可能被临时软封（任意 URL 都返回首页），
   `fetch_detail` 里用页面 `<title>` 校验识别，等冷却后 `backfill` 补正文。
