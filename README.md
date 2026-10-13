@@ -33,6 +33,29 @@ uv run python -m uvicorn main:app --reload
 - 页面：http://127.0.0.1:8000
 - 接口文档：http://127.0.0.1:8000/docs
 
+### 定时采集
+
+服务启动后有一个后台线程，每天按本地时间定点把所有已注册爬虫增量跑一轮（等同 `crawl <name>` 默认参数）。
+时刻在 `jobspider/settings.py` 的 `CRAWL_AT`，默认 `08:00`，也可用环境变量覆盖：
+
+```bash
+# 每天 9:30 和 21:00 各跑一次
+JOBSPIDER_CRAWL_AT="09:30,21:00" uv run python -m uvicorn main:app
+
+# 关闭定时
+JOBSPIDER_CRAWL_AT="" uv run python -m uvicorn main:app
+
+# 查看下次触发时间、上一轮结果
+curl http://127.0.0.1:8000/api/crawl/status
+
+# 不等定时，立即后台跑一轮（已在跑时返回 409）
+curl -X POST http://127.0.0.1:8000/api/crawl/run
+```
+
+- 只在服务运行期间生效，到点时服务没开就错过当次，不补跑。
+- `--reload` 下改代码会重启进程，正在跑的采集随之中断（已入库的不丢）。
+- 保持单 worker；`--workers N` 会每个进程各跑一份。
+
 ### 采集
 
 ```bash

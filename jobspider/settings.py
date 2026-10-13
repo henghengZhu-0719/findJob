@@ -1,4 +1,5 @@
 """全局配置。站点级配置放在各 Spider 类属性里，这里只放框架级默认值。"""
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,3 +23,7 @@ IMPERSONATE = "chrome"
 TRUST_ENV_PROXY = False
 
 LOG_FORMAT = "%(asctime)s %(levelname)-7s [%(name)s] %(message)s"
+
+# 定时采集（FastAPI 进程内后台线程）：每天本地时间几点跑，逗号分隔可配多个，
+# 如 "08:00,20:30"。环境变量 JOBSPIDER_CRAWL_AT 覆盖，设为空串则关闭
+CRAWL_AT = os.environ.get("JOBSPIDER_CRAWL_AT", "08:00")
