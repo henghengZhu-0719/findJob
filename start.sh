@@ -43,7 +43,19 @@ case "$MODE" in
       if command -v npm >/dev/null; then
         npm_install
         echo "==> 前端有改动，重新构建"
-        (cd frontend && npm run build)
+        # 先构建到临时目录、成功再替换：vite 打包中途会清空输出目录，
+        # 小内存机器上构建被 OOM 杀掉时，直接输出到 static/ 会连旧产物一起丢掉
+        rm -rf static.new
+        if (cd frontend && npm run build -- --outDir ../static.new); then
+          rm -rf static && mv static.new static
+        elif [ -f static/index.html ]; then
+          rm -rf static.new
+          echo "!!  前端构建失败（内存不足会显示 Killed），沿用现有 static/；可在别的机器构建后拷过来" >&2
+        else
+          rm -rf static.new
+          echo "前端构建失败且没有现成的 static/，请在别的机器构建后把 static/ 拷到项目根目录" >&2
+          exit 1
+        fi
       elif [ -f static/index.html ]; then
         echo "!!  没有 npm，跳过前端构建，沿用现有 static/（前端源码若有改动不会生效）" >&2
       else
