@@ -38,7 +38,8 @@ app.include_router(router)
 app.include_router(crawl_router)
 
 # 前端构建产物（npm run build 生成）。放在路由注册之后，避免吃掉 /api
-if STATIC_DIR.exists():
+# 判断具体文件而非目录：构建中途被杀会留下不完整的 static/
+if (STATIC_DIR / "index.html").is_file() and (STATIC_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/", include_in_schema=False)
